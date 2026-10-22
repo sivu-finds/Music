@@ -29,7 +29,15 @@ jobs:
           test -n "$ZIP_FILE" || { echo "Project ZIP not found"; exit 1; }
           mkdir project
           unzip -q "$ZIP_FILE" -d project
-          find project -name settings.gradle.kts
+
+      - name: Configure JVM targets
+        run: |
+          find project -type f \( -name 'build.gradle' -o -name 'build.gradle.kts' \) -print
+          find project -type f \( -name 'build.gradle' -o -name 'build.gradle.kts' \) -exec sed -i \
+            -e 's/jvmTarget = "17"/jvmTarget = "1.8"/g' \
+            -e "s/jvmTarget = '17'/jvmTarget = '1.8'/g" \
+            -e 's/JvmTarget.JVM_17/JvmTarget.JVM_1_8/g' \
+            {} +
 
       - name: Build APK
         run: |
