@@ -10,6 +10,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -26,23 +27,72 @@ jobs:
       - name: Extract project ZIP
         run: |
           ZIP_FILE=$(find . -maxdepth 1 -type f -name '*.zip' | head -n 1)
-          test -n "$ZIP_FILE" || { echo "Project ZIP not found"; exit 1; }
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: Project ZIP not found"
+            exit 1
+          fi
           mkdir project
           unzip -q "$ZIP_FILE" -d project
+          echo "Project extracted successfully"
+          find project -maxdepth 4 -type f | head -100
 
       - name: Configure JVM targets
         run: |
-          find project -type f \( -name 'build.gradle' -o -name 'build.gradle.kts' \) -print
-          find project -type f \( -name 'build.gradle' -o -name 'build.gradle.kts' \) -exec sed -i \
-            -e 's/jvmTarget = "17"/jvmTarget = "1.8"/g' \
-            -e "s/jvmTarget = '17'/jvmTarget = '1.8'/g" \
-            -e 's/JvmTarget.JVM_17/JvmTarget.JVM_1_8/g' \
-            {} +
+          python3 - <<'PY'
+          from pathlib import Path
 
-      - name: Build APK
+          for p in Path("project").rglob("*"):
+              if p.is_file() and p.name in ("build.gradle", "build.gradle.kts"):
+                  s = p.read_text()
+                  original = s
+
+                  s = s.replace(
+                      "JavaVersion.VERSION_1_8",
+                      "JavaVersion.VERSION_17"
+                  )
+                  s = s.replace(
+                      'jvmTarget = "1.8"',
+                      'jvmTarget = "17"'
+                  )
+                  s = s.replace(
+                      "jvmTarget = '1.8'",
+                      "jvmTarget = '17'"
+                  )
+                  s = s.replace(
+                      "JvmTarget.JVM_1_8",
+                      "JvmTarget.JVM_17"
+                  )
+
+                  if s != original:
+                      p.write_text(s)
+                      print("Updated:", p)
+          PY
+
+      - name: Locate Gradle project
         run: |
-          PROJECT_DIR=$(find project -type f -name settings.gradle.kts -printf '%h\n' | head -n 1)
-          test -n "$PROJECT_DIR" || { echo "Gradle project not found"; exit 1; }
+          SETTINGS=$(find project -type f \
+            \( -name settings.gradle -o -name settings.gradle.kts \) \
+            | head -n 1)
+
+          if [ -z "$SETTINGS" ]; then
+            echo "ERROR: No Gradle settings file found"
+            exit 1
+          fi
+
+          echo "PROJECT_DIR=$(dirname "$SETTINGS")" >> "$GITHUB_ENV"
+          echo "Found project: $SETTINGS"
+
+      - name: Show Android build configuration
+        run: |
+          echo "Java version:"
+          java -version
+          echo "Gradle build files:"
+          find project -type f \
+            \( -name build.gradle -o -name build.gradle.kts \) \
+            -print
+
+      - name: Build debug APK
+        run: |
           cd "$PROJECT_DIR"
           gradle assembleDebug --no-daemon
 
