@@ -1,1 +1,56 @@
 
+name: Build Sivu's Isaiaruvi APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Extract Android project
+        run: |
+          ZIP_FILE=$(find . -maxdepth 1 -type f -name '*.zip' | head -n 1)
+          if [ -z "$ZIP_FILE" ]; then
+            echo "Project ZIP not found in repository root"
+            exit 1
+          fi
+          mkdir project
+          unzip -q "$ZIP_FILE" -d project
+          echo "Extracted project files:"
+          find project -maxdepth 3 -type f | head -80
+
+      - name: Locate Gradle project
+        run: |
+          GRADLE_FILE=$(find project -type f -name gradlew | head -n 1)
+          if [ -z "$GRADLE_FILE" ]; then
+            echo "No Gradle wrapper (gradlew) found in ZIP."
+            echo "The project ZIP may need additional setup before it can build."
+            exit 1
+          fi
+          echo "PROJECT_DIR=$(dirname "$GRADLE_FILE")" >> "$GITHUB_ENV"
+          chmod +x "$GRADLE_FILE"
+
+      - name: Build debug APK
+        run: |
+          cd "$PROJECT_DIR"
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sivus-Isaiaruvi-APK
+          path: project/**/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
